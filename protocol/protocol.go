@@ -6,17 +6,16 @@ package protocol
 
 import (
 	"bytes"
+	"flag"
 	"fmt"
 	"io"
-	"os"
-	"flag"
-	"runtime"
-	"log"
-	"path/filepath"
-	"runtime/pprof"
 	"io/ioutil"
+	"log"
+	"os"
+	"path/filepath"
+	"runtime"
+	"runtime/pprof"
 	"sync/atomic"
-	
 )
 
 var serverprofile = flag.String("serverprofile", "", "This is for specifying the prefix of the output file for the profile")
@@ -587,21 +586,23 @@ func (s *Server) readNetPackets() {
 		}
 		//panic(fmt.Sprintf("packet is %v", b.Bytes()[:]))
 		//panic(fmt.Sprintf("s is %v", s))
-		if err := s.D(s, b, t); err != nil {
-			log.Printf("%v: %v", RPCNames[MType(l[4])], err)
-		}
-		if s.Trace != nil {
-			s.Trace("readNetPackets: Write %v back", b)
-		}
-		amt, err := s.ToNet.Write(b.Bytes())
-		if err != nil {
-			log.Printf("readNetPackets: write error: %v", err)
-			s.Dead = true
-			return
-		}
-		if s.Trace != nil {
-			s.Trace("Returned %v amt %v", b, amt)
-		}
+		go func() {
+			if err := s.D(s, b, t); err != nil {
+				log.Printf("%v: %v", RPCNames[MType(l[4])], err)
+			}
+			if s.Trace != nil {
+				s.Trace("readNetPackets: Write %v back", b)
+			}
+			amt, err := s.ToNet.Write(b.Bytes())
+			if err != nil {
+				log.Printf("readNetPackets: write error: %v", err)
+				s.Dead = true
+				return
+			}
+			if s.Trace != nil {
+				s.Trace("Returned %v amt %v", b, amt)
+			}
+		}()
 	}
 
 }
