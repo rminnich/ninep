@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"runtime/pprof"
+	"sync"
 	"sync/atomic"
 )
 
@@ -342,6 +343,7 @@ type Server struct {
 	Trace     Tracer
 	Dead      bool
 
+	vonce    sync.Once
 	fprofile *os.File
 }
 
@@ -636,7 +638,9 @@ func NewServer(ns NineServer, opts ...ServerOpt) (*Server, error) {
 func Dispatch(s *Server, b *bytes.Buffer, t MType) error {
 	switch t {
 	case Tversion:
-		s.Versioned = true
+		s.vonce.Do(func() {
+			s.Versioned = true
+		})
 	default:
 		if !s.Versioned {
 			m := fmt.Sprintf("Dispatch: %v not allowed before Tversion", RPCNames[t])
