@@ -532,6 +532,9 @@ func BenchmarkNull(b *testing.B) {
 	e.qids = make(map[FID]QID)
 
 	s.Start()
+	if _, _, err := c.CallTversion(8000, "9P2000"); err != nil {
+		b.Fatal(err)
+	}
 	b.Logf("%d iterations", b.N)
 	for i := 0; i < b.N; i++ {
 		if _, err := c.CallTread(FID(2), 0, 5); err != nil {
