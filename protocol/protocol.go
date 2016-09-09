@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"runtime/pprof"
+	"sync"
 	"sync/atomic"
 )
 
@@ -342,6 +343,7 @@ type Server struct {
 	Trace     Tracer
 	Dead      bool
 
+	vonce    sync.Once
 	fprofile *os.File
 }
 
@@ -497,9 +499,13 @@ func (c *Client) IO() {
 		if int(t-1) >= len(c.RPC) {
 			panic(fmt.Sprintf("tag %d >= len(c.RPC) %d", t, len(c.RPC)))
 		}
-		c.Trace("RPC %v ", c.RPC[t-1])
+		if c.Trace != nil {
+			c.Trace("RPC %v ", c.RPC[t-1])
+		}
 		rrr := c.RPC[t-1]
-		c.Trace("rrr %v ", rrr)
+		if c.Trace != nil {
+			c.Trace("rrr %v ", rrr)
+		}
 		rrr.Reply <- r.b
 		c.Tags <- t
 	}
@@ -588,10 +594,12 @@ func (s *Server) readNetPackets() {
 		//panic(fmt.Sprintf("s is %v", s))
 		go func() {
 			if err := s.D(s, b, t); err != nil {
-				log.Printf("%v: %v", RPCNames[MType(l[4])], err)
+				if s.Trace != nil {
+					s.Trace("%v: %v", RPCNames[MType(l[4])], err)
+				}
 			}
 			if s.Trace != nil {
-				s.Trace("readNetPackets: Write %v back", b)
+				s.Trace("readNetPackets: Write %q back", b)
 			}
 			amt, err := s.ToNet.Write(b.Bytes())
 			if err != nil {
@@ -600,7 +608,7 @@ func (s *Server) readNetPackets() {
 				return
 			}
 			if s.Trace != nil {
-				s.Trace("Returned %v amt %v", b, amt)
+				s.Trace("Returned %q amt %v", b, amt)
 			}
 		}()
 	}
@@ -636,14 +644,16 @@ func NewServer(ns NineServer, opts ...ServerOpt) (*Server, error) {
 func Dispatch(s *Server, b *bytes.Buffer, t MType) error {
 	switch t {
 	case Tversion:
-		s.Versioned = true
+		s.vonce.Do(func() {
+			s.Versioned = true
+		})
 	default:
 		if !s.Versioned {
-			m := fmt.Sprintf("Dispatch: %v not allowed before Tversion", RPCNames[t])
+			err := fmt.Errorf("Dispatch: %v not allowed before Tversion", RPCNames[t])
 			// Yuck. Provide helper.
 			d := b.Bytes()
-			MarshalRerrorPkt(b, Tag(d[0])|Tag(d[1]<<8), m)
-			return fmt.Errorf("Dispatch: %v not allowed before Tversion", RPCNames[t])
+			MarshalRerrorPkt(b, Tag(d[0])|Tag(d[1]<<8), err.Error())
+			return err
 		}
 	}
 	switch t {

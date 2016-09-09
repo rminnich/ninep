@@ -10,8 +10,8 @@ import (
 	"io"
 	"os"
 	"reflect"
+	"sync"
 	"testing"
-
 )
 
 var (
@@ -340,12 +340,21 @@ func TestTManyRPCs(t *testing.T) {
 	t.Logf("Start the server")
 	s.Start()
 	t.Logf("started")
-	for i := 0; i < 256*1024; i++ {
-		_, _, err := c.CallTversion(8000, "9P2000")
-		if err != nil {
-			t.Fatalf("CallTversion: want nil, got %v", err)
-		}
+
+	var wg sync.WaitGroup
+	wg.Add(128)
+	for i := 0; i < 128; i++ { // make fewer requests total so I wait less...
+		go func() {
+			defer wg.Done()
+			for i := 0; i < 1024; i++ {
+				_, _, err := c.CallTversion(8000, "9P2000")
+				if err != nil {
+					t.Fatalf("CallTversion: want nil, got %v", err)
+				}
+			}
+		}()
 	}
+	wg.Wait()
 }
 
 func TestTMessages(t *testing.T) {
@@ -523,6 +532,9 @@ func BenchmarkNull(b *testing.B) {
 	e.qids = make(map[FID]QID)
 
 	s.Start()
+	if _, _, err := c.CallTversion(8000, "9P2000"); err != nil {
+		b.Fatal(err)
+	}
 	b.Logf("%d iterations", b.N)
 	for i := 0; i < b.N; i++ {
 		if _, err := c.CallTread(FID(2), 0, 5); err != nil {
